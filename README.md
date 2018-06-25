@@ -134,6 +134,9 @@ repository =>
     login.json
     password_reset.html
     password_reset.json
+  email-templates
+    verify_email.html
+    verify_email.json
 ```
 
 ##### Clients
