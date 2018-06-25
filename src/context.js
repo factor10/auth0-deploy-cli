@@ -1,7 +1,7 @@
 import Promise from 'bluebird';
 import * as fs from 'fs';
 import * as path from 'path';
-import { constants, unifyDatabases, unifyScripts } from 'auth0-source-control-extension-tools';
+import { constants, unifyDatabases, unifyScripts } from '@factorten/auth0-source-control-extension-tools';
 import logger from './logger';
 
 Promise.promisifyAll(fs);
@@ -12,6 +12,13 @@ const isPage = (file) => {
   var nameIndex = constants.PAGE_NAMES.indexOf(fileName);
   logger.debug('directory: ' + directory + ', nameIndex: ' + nameIndex);
   return directory === constants.PAGES_DIRECTORY && nameIndex >= 0;
+};
+
+const isEmailTemplate = (file) => {
+  const directory = path.basename(path.dirname(file));
+  const fileName = path.basename(file);
+  const nameIndex = constants.EMAIL_TEMPLATE_FILENAMES.indexOf(fileName);
+  return directory === constants.EMAIL_TEMPLATES_DIRECTORY && nameIndex >= 0;
 };
 
 /*
@@ -333,6 +340,47 @@ const getPages = (dirPath) => {
     });
 };
 
+/*
+ * Get all email templates.
+ */
+const getEmailTemplates = (dirPath) => {
+  const templates = {};
+
+  /* Grab the files and loop through them */
+  return fs.readdirAsync(dirPath)
+    .then((files) => {
+      files.forEach((fileName) => {
+        /* Process File */
+        const fullFileName = path.join(dirPath, fileName);
+        if (isEmailTemplate(fullFileName)) {
+          const templateName = path.parse(fileName).name;
+          const ext = path.parse(fileName).ext;
+          templates[templateName] = templates[templateName] || {};
+
+          if (ext !== '.json') {
+            templates[templateName].fileName = fullFileName;
+          } else {
+            templates[templateName].metaFileName = fullFileName;
+          }
+        } else {
+          logger.warn('Skipping file that is not an email template: ' + fullFileName);
+        }
+      });
+    })
+    // Note that processPage works fine here, we don't need a special version for email templates.
+    .then(() => Promise.map(Object.keys(templates),
+      templateName => processPage(templateName, templates[templateName]), { concurrency: 2 }))
+    .catch(function(e) {
+      if (e.code === 'ENOENT') {
+        logger.info('No email templates configured');
+      } else {
+        return Promise.reject(new Error('Couldn\'t process the email templates directory because: ' + e.message));
+      }
+
+      return Promise.resolve();
+    });
+};
+
 const getChanges = (filePath, mappings) => {
   var fullPath = path.resolve(filePath);
   var lstat = null;
@@ -353,7 +401,8 @@ const getChanges = (filePath, mappings) => {
       pages: getPages(path.join(fullPath, constants.PAGES_DIRECTORY)),
       databases: getDatabaseScripts((path.join(fullPath, constants.DATABASE_CONNECTIONS_DIRECTORY))),
       clients: getConfigurableConfigs((path.join(fullPath, constants.CLIENTS_DIRECTORY)), 'client'),
-      resourceServers: getConfigurableConfigs((path.join(fullPath, constants.RESOURCE_SERVERS_DIRECTORY)), 'resource server')
+      resourceServers: getConfigurableConfigs((path.join(fullPath, constants.RESOURCE_SERVERS_DIRECTORY)), 'resource server'),
+      emailTemplates: getEmailTemplates(path.join(fullPath, constants.EMAIL_TEMPLATES_DIRECTORY))
     };
 
     return Promise.props(promises)
@@ -362,7 +411,8 @@ const getChanges = (filePath, mappings) => {
         databases: unifyDatabases(result.databases, mappings),
         pages: unifyScripts(result.pages, mappings),
         clients: unifyScripts(result.clients, mappings),
-        resourceServers: unifyScripts(result.resourceServers, mappings)
+        resourceServers: unifyScripts(result.resourceServers, mappings),
+        emailTemplates: unifyScripts(result.emailTemplates, mappings)
       }));
   } else if (lstat.isFile()) {
     /* If it is a file, parse it */
@@ -392,6 +442,7 @@ export default class {
           me.databases = data.databases || [];
           me.clients = data.clients || {};
           me.resourceServers = data.resourceServers || {};
+          me.emailTemplates = data.emailTemplates || {};
         });
   }
 }

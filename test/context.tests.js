@@ -6,7 +6,7 @@ const rmdirSync = require('rmdir-sync');
 const fs = require('fs');
 const path = require('path');
 const mkdirp = require('mkdirp');
-const constants = require('auth0-source-control-extension-tools').constants;
+const constants = require('@factorten/auth0-source-control-extension-tools').constants;
 
 const check = function(done, f) {
   try {
@@ -538,6 +538,87 @@ describe('#context', () => {
           check(done, function() {
             expect(err.message).to.equal('Couldn\'t process' +
               ' the rules directory because: ENOTDIR:' +
+              ' not a directory, scandir \'' + dir + '\'');
+          });
+        });
+    });
+  });
+
+  describe('#context emailTemplates', () => {
+    const createEmailTemplatesDir = (dir, target) => {
+      cleanThenMkdir(dir);
+      Object.keys(target).forEach((htmlName) => {
+        writeStringToFile(path.resolve(dir, htmlName + '.html'), target[htmlName].htmlFile);
+        if (target[htmlName].metadata) writeStringToFile(path.resolve(dir, htmlName + '.json'), target[htmlName].metadataFile);
+      });
+    };
+
+    it('should process email templates', (done) => {
+      const target = {
+        verify_email: {
+          htmlFile: '<html><title>##hello##</title></html>',
+          metadata: false,
+          name: 'verify_email'
+        },
+        reset_email: {
+          htmlFile: '<html></html>',
+          metadata: true,
+          metadataFile: '{ "enabled": "foo" }',
+          name: 'reset_email'
+        }
+      };
+
+      const repoDir = path.join(testDataDir, 'emailtemplates1');
+      const dir = path.join(repoDir, constants.EMAIL_TEMPLATES_DIRECTORY);
+      createEmailTemplatesDir(dir, target);
+
+      const context = new Context(repoDir, { hello: 'goodbye' });
+      context.init()
+        .then(() => {
+          check(done, function() {
+            target.verify_email.htmlFile = '<html><title>goodbye</title></html>';
+            expect(context.emailTemplates).to.deep.equal(target);
+          });
+        });
+    });
+
+    it('should ignore bad email template file', (done) => {
+      const target = {
+        verify_email: {
+          htmlFile: '<html></html>',
+          metadata: false,
+          name: 'verify_email'
+        }
+      };
+
+      const repoDir = path.join(testDataDir, 'emailtemplates2');
+      const dir = path.join(repoDir, constants.EMAIL_TEMPLATES_DIRECTORY);
+      createEmailTemplatesDir(dir, target);
+
+      const file = path.join(dir, 'README.md');
+      writeStringToFile(file, 'something');
+
+      const context = new Context(repoDir);
+      context.init()
+        .then(() => {
+          check(done, function() {
+            expect(context.emailTemplates).to.deep.equal(target);
+          });
+        });
+    });
+
+    it('should ignore bad email templates directory', (done) => {
+      const repoDir = path.join(testDataDir, 'emailtemplates3');
+      cleanThenMkdir(repoDir);
+      const dir = path.join(repoDir, constants.EMAIL_TEMPLATES_DIRECTORY);
+      writeStringToFile(dir, 'junk');
+
+      const context = new Context(repoDir);
+      context.init()
+        .catch((err) => {
+          check(done, function() {
+            expect(err.message).to.equal('Couldn\'t process' +
+              ' the email templates directory because: ENOTDIR:' +
               ' not a directory, scandir \'' + dir + '\'');
           });
         });
