@@ -624,4 +624,76 @@ describe('#context', () => {
         });
     });
   });
+
+  describe('#context emailProviders', () => {
+    const createEmailProvidersDir = (dir, target) => {
+      cleanThenMkdir(dir);
+      Object.keys(target).forEach((name) => {
+        writeStringToFile(path.resolve(dir, name + '.json'), target[name].configFile);
+      });
+    };
+
+    it('should process email providers', (done) => {
+      const target = {
+        default: {
+          configFile: '{"name":"##name##"}',
+          name: 'default'
+        }
+      };
+
+      const repoDir = path.join(testDataDir, 'emailproviders1');
+      const dir = path.join(repoDir, constants.EMAIL_PROVIDERS_DIRECTORY);
+      createEmailProvidersDir(dir, target);
+
+      const context = new Context(repoDir, { name: 'smtp' });
+      context.init()
+        .then(() => {
+          check(done, function() {
+            target.default.configFile = '{"name":"smtp"}';
+            expect(context.emailProviders).to.deep.equal(target);
+          });
+        });
+    });
+
+    it('should ignore bad email provider file', (done) => {
+      const target = {
+        default: {
+          configFile: '{}',
+          name: 'default'
+        }
+      };
+
+      const repoDir = path.join(testDataDir, 'emailproviders2');
+      const dir = path.join(repoDir, constants.EMAIL_PROVIDERS_DIRECTORY);
+      createEmailProvidersDir(dir, target);
+
+      const file = path.join(dir, 'README.md');
+      writeStringToFile(file, 'something');
+
+      const context = new Context(repoDir);
+      context.init()
+        .then(() => {
+          check(done, function() {
+            expect(context.emailProviders).to.deep.equal(target);
+          });
+        });
+    });
+
+    it('should ignore bad email providers directory', (done) => {
+      const repoDir = path.join(testDataDir, 'emailproviders3');
+      cleanThenMkdir(repoDir);
+      const dir = path.join(repoDir, constants.EMAIL_PROVIDERS_DIRECTORY);
+      writeStringToFile(dir, 'junk');
+
+      const context = new Context(repoDir);
+      context.init()
+        .catch((err) => {
+          check(done, function() {
+            expect(err.message).to.equal('Couldn\'t process' +
+              ' the email providers directory because: ENOTDIR:' +
+              ' not a directory, scandir \'' + dir + '\'');
+          });
+        });
+    });
+  });
 });

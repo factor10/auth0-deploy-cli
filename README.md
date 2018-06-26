@@ -137,6 +137,8 @@ repository =>
   email-templates
     verify_email.html
     verify_email.json
+  email-providers
+    default.json
 ```
 
 ##### Clients
@@ -172,6 +174,24 @@ NOTE: There is not currently a way to mark rules as manual yet, that will become
 
 ##### Custom Pages
 See Custom Pages configuration [here](https://auth0.com/docs/extensions/github-deploy#deploy-hosted-pages)
+
+##### Email templates
+An email template consists of two files, an HTML file that contains the body
+of the template, and a JSON file that contains metadata. The name of each file
+should be the name of the template to update, e.g. `verify_email`.
+
+See the [management API documentation](https://auth0.com/docs/api/management/v2#!/Email_Templates/put_email_templates_by_templateName)
+for information about which metadata can be used, though properties
+`template` and `body` will be ignored.
+
+##### Email providers
+There can currently only be a single email provider. The name of the configuration
+file should be `default.json`.
+
+See the [management API documentation](https://auth0.com/docs/api/management/v2#!/Emails/patch_provider)
+for information about which configuration can be used. Note that the `name`
+property contains the provider type and should not be confused with the
+name of the file.
 
 #### Command Line Options
 

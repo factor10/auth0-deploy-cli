@@ -21,6 +21,12 @@ const isEmailTemplate = (file) => {
   return directory === constants.EMAIL_TEMPLATES_DIRECTORY && nameIndex >= 0;
 };
 
+const isEmailProvider = (file) => {
+  const directory = path.basename(path.dirname(file));
+  const fileName = path.basename(file);
+  return directory === constants.EMAIL_PROVIDERS_DIRECTORY && fileName === constants.EMAIL_PROVIDER_FILENAME;
+};
+
 /*
  * Process a single rule with its metadata.
  */
@@ -301,6 +307,25 @@ const processPage = (pageName, page) => {
 };
 
 /*
+ * Process a single email provider.
+ */
+const processEmailProvider = (providerName, provider) => {
+  const fileProcesses = [];
+  const currentProvider = {
+    name: providerName
+  };
+
+  if (provider.fileName) {
+    fileProcesses.push(fs.readFileAsync(provider.fileName, 'utf8').then(
+      (contents) => {
+        currentProvider.configFile = contents;
+      }));
+  }
+
+  return Promise.all(fileProcesses).then(() => currentProvider);
+};
+
+/*
  * Get all pages.
  */
 const getPages = (dirPath) => {
@@ -381,6 +406,43 @@ const getEmailTemplates = (dirPath) => {
     });
 };
 
+/*
+ * Get email providers, though in practice it will only pick the one
+ * named 'default.json'.
+ */
+const getEmailProviders = (dirPath) => {
+  const providers = {};
+
+  /* Grab the files and loop through them */
+  return fs.readdirAsync(dirPath)
+    .then((files) => {
+      files.forEach((fileName) => {
+        /* Process File */
+        const fullFileName = path.join(dirPath, fileName);
+        if (isEmailProvider(fullFileName)) {
+          const providerName = path.parse(fileName).name;
+          providers[providerName] = providers[providerName] || {};
+
+          providers[providerName].fileName = fullFileName;
+        } else {
+          logger.warn('Skipping file that is not an email provider: ' + fullFileName);
+        }
+      });
+    })
+    // Note that processPage works fine here, we don't need a special version for email templates.
+    .then(() => Promise.map(Object.keys(providers),
+      providerName => processEmailProvider(providerName, providers[providerName]), { concurrency: 2 }))
+    .catch(function(e) {
+      if (e.code === 'ENOENT') {
+        logger.info('No email providers configured');
+      } else {
+        return Promise.reject(new Error('Couldn\'t process the email providers directory because: ' + e.message));
+      }
+
+      return Promise.resolve();
+    });
+};
+
 const getChanges = (filePath, mappings) => {
   var fullPath = path.resolve(filePath);
   var lstat = null;
@@ -402,7 +464,8 @@ const getChanges = (filePath, mappings) => {
       databases: getDatabaseScripts((path.join(fullPath, constants.DATABASE_CONNECTIONS_DIRECTORY))),
       clients: getConfigurableConfigs((path.join(fullPath, constants.CLIENTS_DIRECTORY)), 'client'),
       resourceServers: getConfigurableConfigs((path.join(fullPath, constants.RESOURCE_SERVERS_DIRECTORY)), 'resource server'),
-      emailTemplates: getEmailTemplates(path.join(fullPath, constants.EMAIL_TEMPLATES_DIRECTORY))
+      emailTemplates: getEmailTemplates(path.join(fullPath, constants.EMAIL_TEMPLATES_DIRECTORY)),
+      emailProviders: getEmailProviders(path.join(fullPath, constants.EMAIL_PROVIDERS_DIRECTORY))
     };
 
     return Promise.props(promises)
@@ -412,7 +475,8 @@ const getChanges = (filePath, mappings) => {
         pages: unifyScripts(result.pages, mappings),
         clients: unifyScripts(result.clients, mappings),
         resourceServers: unifyScripts(result.resourceServers, mappings),
-        emailTemplates: unifyScripts(result.emailTemplates, mappings)
+        emailTemplates: unifyScripts(result.emailTemplates, mappings),
+        emailProviders: unifyScripts(result.emailProviders, mappings)
       }));
   } else if (lstat.isFile()) {
     /* If it is a file, parse it */
@@ -443,6 +507,7 @@ export default class {
           me.clients = data.clients || {};
           me.resourceServers = data.resourceServers || {};
           me.emailTemplates = data.emailTemplates || {};
+          me.emailProviders = data.emailProviders || {};
         });
   }
 }
