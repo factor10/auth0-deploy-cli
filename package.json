@@ -14,7 +14,7 @@
     "test:clean": "rimraf ./coverage && rimraf ./.nyc_output",
     "build": "babel src -d lib",
     "prepublish": "npm run build",
-    "release": "git tag $npm_package_version && git push --tags && npm publish"
+    "release": "sh -c 'git tag $npm_package_version && git push --tags && npm publish --access=public --'"
   },
   "repository": {
     "type": "git",
