@@ -131,7 +131,37 @@ describe('#context', () => {
       cleanThenMkdir(dbDir);
 
       Object.keys(data.scripts).forEach(scriptName => writeStringToFile(path.join(dbDir, scriptName + '.js'), data.scripts[scriptName].scriptFile));
+      if (typeof data.configuration === 'object') {
+        writeStringToFile(path.join(dbDir, 'configuration.json'), JSON.stringify(data.configuration));
+      }
     };
+
+    it('should read configuration.json', (done) => {
+      const target = [
+        {
+          name: 'db1',
+          scripts: {},
+          configuration: {
+            options: {
+              passwordPolicy: '##policy##'
+            }
+          }
+        }
+      ];
+
+      const repoDir = path.join(testDataDir, 'connections4');
+      const dbDir = path.join(repoDir, constants.DATABASE_CONNECTIONS_DIRECTORY);
+      target.forEach(data => createDbDir(dbDir, data));
+
+      const context = new Context(repoDir, { policy: 'high' });
+      context.init()
+        .then(() => {
+          check(done, function() {
+            target[0].configuration.options.passwordPolicy = 'high';
+            expect(context.databases).to.deep.equal(target);
+          });
+        });
+    });
 
     it('should process database connections', (done) => {
       const target = [

@@ -185,17 +185,17 @@ const getConfigurableConfigs = (dirPath, type) => {
 };
 
 /*
- * Process a single database script.
+ * Read database files.
  */
-const processDatabaseScript = (databaseName, scripts) => {
+const readDatabaseFiles = (databaseName, databaseObject) => {
   const database = {
     name: databaseName,
     scripts: []
   };
 
-  const files = [];
-  scripts.forEach((script) => {
-    files.push(fs.readFileAsync(script.scriptFileName, 'utf8').then(
+  const promises = [];
+  databaseObject.scripts.forEach((script) => {
+    promises.push(fs.readFileAsync(script.scriptFileName, 'utf8').then(
       (contents) => {
         database.scripts.push({
           name: script.name,
@@ -204,14 +204,22 @@ const processDatabaseScript = (databaseName, scripts) => {
       }));
   });
 
-  return Promise.all(files)
+  if (databaseObject.configurationFileName) {
+    promises.push(fs.readFileAsync(databaseObject.configurationFileName, 'utf8').then(
+      (contents) => {
+        database.configurationFile = contents;
+        database.configurationFileName = databaseObject.configurationFileName;
+      }));
+  }
+
+  return Promise.all(promises)
     .then(() => database);
 };
 
 /*
- * Get the details of a database file script.
+ * Get the details of a database file.
  */
-const getDatabaseScriptDetails = (filename) => {
+const getDatabaseFileDetails = (filename) => {
   const baseFileName = path.basename(filename);
   const firstDirname = path.dirname(filename);
   const thisConnectionDir = path.basename(firstDirname);
@@ -219,27 +227,36 @@ const getDatabaseScriptDetails = (filename) => {
   logger.debug('Found filename: ' + filename + ', base: ' + baseFileName +
                ', thisConn: ' + thisConnectionDir + ', allConn: ' + allConnectionsDir);
   if (allConnectionsDir === constants.DATABASE_CONNECTIONS_DIRECTORY &&
-    /\.js$/i.test(baseFileName)) {
+    (/\.js$/i.test(baseFileName) || /\.json$/i.test(baseFileName))) {
+    const isScript = /\.js$/i.test(baseFileName);
     const scriptName = path.parse(baseFileName).name;
-    if (constants.DATABASE_SCRIPTS.indexOf(scriptName) > -1) {
+    if (isScript) {
+      if (constants.DATABASE_SCRIPTS.indexOf(scriptName) > -1) {
+        return {
+          database: thisConnectionDir,
+          name: path.parse(scriptName).name,
+          isScript: true
+        };
+      }
+    } else if (scriptName === 'configuration') {
       return {
         database: thisConnectionDir,
-        name: path.parse(scriptName).name
+        isScript: false
       };
     }
 
-    logger.warn('Skipping bad database script file: ' + filename + ' because: not a valid DB script: ' + scriptName);
+    logger.warn('Skipping bad database file: ' + filename + ' because: not a valid DB script or configuration file: ' + scriptName);
   } else {
-    logger.warn('Skipping bad database script file: ' + filename + ' because: bad database dirname: ' + allConnectionsDir + ', or basename: ' + baseFileName);
+    logger.warn('Skipping bad database file: ' + filename + ' because: bad database dirname: ' + allConnectionsDir + ', or basename: ' + baseFileName);
   }
 
   return null;
 };
 
 /*
- * Get all database scripts.
+ * Get all database scripts and configuration.
  */
-const getDatabaseScripts = (dirPath) => {
+const getDatabases = (dirPath) => {
   const databases = {};
 
   // Determine if we have the script, the metadata or both.
@@ -252,11 +269,15 @@ const getDatabaseScripts = (dirPath) => {
         fs.readdirAsync(fullDir).then((files) => {
           files.forEach(function(fileName) {
             const fullFileName = path.join(fullDir, fileName);
-            const script = getDatabaseScriptDetails(fullFileName);
-            if (script) {
-              databases[script.database] = databases[script.database] || [];
-              script.scriptFileName = fullFileName;
-              databases[script.database].push(script);
+            const details = getDatabaseFileDetails(fullFileName);
+            if (details) {
+              databases[details.database] = databases[details.database] || { scripts: [] };
+              if (details.isScript) {
+                details.scriptFileName = fullFileName;
+                databases[details.database].scripts.push(details);
+              } else {
+                databases[details.database].configurationFileName = fullFileName;
+              }
             }
           });
         })
@@ -265,7 +286,7 @@ const getDatabaseScripts = (dirPath) => {
     return Promise.all(filePromises);
   })
     .then(() => Promise.map(Object.keys(databases),
-      databaseName => processDatabaseScript(databaseName, databases[databaseName]),
+      databaseName => readDatabaseFiles(databaseName, databases[databaseName]),
       { concurrency: 2 }))
     .catch(function(e) {
       if (e.code === 'ENOENT') {
@@ -461,7 +482,7 @@ const getChanges = (filePath, mappings) => {
     promises = {
       rules: getRules(path.join(fullPath, constants.RULES_DIRECTORY)),
       pages: getPages(path.join(fullPath, constants.PAGES_DIRECTORY)),
-      databases: getDatabaseScripts((path.join(fullPath, constants.DATABASE_CONNECTIONS_DIRECTORY))),
+      databases: getDatabases((path.join(fullPath, constants.DATABASE_CONNECTIONS_DIRECTORY))),
       clients: getConfigurableConfigs((path.join(fullPath, constants.CLIENTS_DIRECTORY)), 'client'),
       resourceServers: getConfigurableConfigs((path.join(fullPath, constants.RESOURCE_SERVERS_DIRECTORY)), 'resource server'),
       emailTemplates: getEmailTemplates(path.join(fullPath, constants.EMAIL_TEMPLATES_DIRECTORY)),

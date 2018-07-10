@@ -125,6 +125,7 @@ repository =>
     my-connection-name
       get_user.js
       login.js
+      configuration.json
   rules
     rule1.js
     rule1.json
@@ -166,6 +167,9 @@ In the .json file you can put the same json you would put when using the Managem
 
 ##### Database Connections
 See Database Connection configuration [here](https://auth0.com/docs/extensions/github-deploy#deploy-database-connection-scripts)
+
+If the special file named `configuration.json` exists for a connection, it is assumed to contain
+options and metadata that will be used when updating the connection.
 
 ##### Rules
 See Rules configuration [here](https://auth0.com/docs/extensions/github-deploy#deploy-rules)
